@@ -147,8 +147,8 @@ def tensor_map(
     Optimizations:
 
     * Main loop in parallel
-    * All indices use numpy buffers
-    * When `out` and `in` are stride-aligned, avoid indexing
+    * All indices use numpy buffers   用NumPy数组处理维度索引，避免慢的Python列表操作
+    * When `out` and `in` are stride-aligned, avoid indexing   当输入输出的strides匹配时，直接逐个线性扫描，避免昂贵的index计算
 
     Args:
     ----
@@ -169,7 +169,26 @@ def tensor_map(
         in_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        raise NotImplementedError("Need to implement for Task 3.1")
+        # 优化3
+        if np.array_equal(out_shape, in_shape) and np.array_equal(out_strides, in_strides):  # 直接使用==会返回一个布尔数组而不是布尔值 ×
+            for i in prange(np.prod(out_shape)):
+                out[i] = fn(in_storage[i])
+            return
+
+        for ordinal in prange(np.prod(out_shape)):  # 优化1
+            # 注意：要为每个线程创建自己的局部变量out_index、in_index
+            out_index = np.zeros(len(out_shape), dtype=np.int32)  # 优化2
+            in_index = np.zeros(len(in_shape), dtype=np.int32)  # 优化2
+
+            to_index(ordinal, out_shape, out_index)  # 原本的to_index会改变循环变量ordinal，得改写to_index
+            broadcast_index(out_index, out_shape, in_shape, in_index)  
+
+            in_pos = index_to_position(in_index, in_strides)  
+            out_pos = index_to_position(out_index, out_strides)  
+
+            out[out_pos] = fn(in_storage[in_pos])
+
+        # raise NotImplementedError("Need to implement for Task 3.1")
 
     return njit(_map, parallel=True)  # type: ignore
 
@@ -209,7 +228,27 @@ def tensor_zip(
         b_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        raise NotImplementedError("Need to implement for Task 3.1")
+        if np.array_equal(out_shape, a_shape) and np.array_equal(out_strides, a_strides) and np.array_equal(out_shape, b_shape) and np.array_equal(out_strides, b_strides):  # 优化3
+            for i in prange(np.prod(out_shape)):
+                out[i] = fn(a_storage[i], b_storage[i])
+            return
+        
+        for ordinal in prange(np.prod(out_shape)):  # 优化1
+            out_index = np.zeros(len(out_shape), dtype=np.int32)  # 优化2
+            a_index = np.zeros(len(a_shape), dtype=np.int32)  # 优化2
+            b_index = np.zeros(len(b_shape), dtype=np.int32)  # 优化2
+
+            to_index(ordinal, out_shape, out_index)  
+            broadcast_index(out_index, out_shape, a_shape, a_index)  
+            broadcast_index(out_index, out_shape, b_shape, b_index)
+
+            a_pos = index_to_position(a_index, a_strides) 
+            b_pos = index_to_position(b_index, b_strides)  
+            out_pos = index_to_position(out_index, out_strides)  
+
+            out[out_pos] = fn(a_storage[a_pos], b_storage[b_pos]) 
+
+        # raise NotImplementedError("Need to implement for Task 3.1")
 
     return njit(_zip, parallel=True)  # type: ignore
 
@@ -245,7 +284,33 @@ def tensor_reduce(
         reduce_dim: int,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        raise NotImplementedError("Need to implement for Task 3.1")
+        for ordinal in prange(np.prod(out_shape)):  
+            out_index = np.zeros(len(out_shape), dtype=np.int32)
+            a_index = np.zeros(len(a_shape), dtype=np.int32)
+
+            to_index(ordinal, out_shape, out_index)  
+            for i in range(len(out_shape)):
+                if i != reduce_dim:
+                    a_index[i] = out_index[i]  # 其他维度不变
+                else:
+                    a_index[i] = 0  # reduce的维度变为0（也可以省略，因为初始化成0了）
+
+            # (2) data
+            # e.g a_(0, y, z)&a_(1, y, z)&...&a_(x-1, y, z) -> out_(0, y, z)
+            # 初始化（注意不能是0，比如算累乘的话初值应该是1，所以直接初始化成第一个元素、后边从第二个元素开始遍历比较好）
+            a_index[reduce_dim] = 0
+            a_pos = index_to_position(a_index, a_strides)
+            now = a_storage[a_pos]
+            # 依次reduce
+            for i in range(1, a_shape[reduce_dim]):  
+                a_index[reduce_dim] = i  # 改index，考察a_(i, y, z)
+                a_pos = index_to_position(a_index, a_strides)  # 转化为对应pos
+                now = fn(now, a_storage[a_pos])
+            # 写入out
+            out_pos = index_to_position(out_index, out_strides)
+            out[out_pos] = now
+
+        # raise NotImplementedError("Need to implement for Task 3.1")
 
     return njit(_reduce, parallel=True)  # type: ignore
 
