@@ -45,7 +45,20 @@ class TensorOps:
 
     @staticmethod
     def matrix_multiply(a: Tensor, b: Tensor) -> Tensor:
-        raise NotImplementedError("Not implemented in this assignment")
+        m, n = a.shape
+        _, p = b.shape
+
+        out = [[0.0 for _ in range(p)] for _ in range(m)]
+
+        for i in range(m):
+            for j in range(p):
+                s = 0.0
+                for k in range(n):
+                    s += a[i, k] * b[k, j]
+                out[i][j] = s
+
+        return Tensor(out)
+        # raise NotImplementedError("Not implemented in this assignment")
 
     cuda = False
 

@@ -284,29 +284,24 @@ def tensor_reduce(
         reduce_dim: int,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        for ordinal in prange(np.prod(out_shape)):  
-            out_index = np.zeros(len(out_shape), dtype=np.int32)
-            a_index = np.zeros(len(a_shape), dtype=np.int32)
+        for ordinal in prange(np.prod(out_shape)):  # 优化1
+            out_index = np.zeros(len(out_shape), dtype=np.int32)  # 优化2、3
+            a_index = np.zeros(len(a_shape), dtype=np.int32)  # 优化2、3
 
             to_index(ordinal, out_shape, out_index)  
             for i in range(len(out_shape)):
                 if i != reduce_dim:
-                    a_index[i] = out_index[i]  # 其他维度不变
+                    a_index[i] = out_index[i]  
                 else:
-                    a_index[i] = 0  # reduce的维度变为0（也可以省略，因为初始化成0了）
+                    a_index[i] = 0  
 
-            # (2) data
-            # e.g a_(0, y, z)&a_(1, y, z)&...&a_(x-1, y, z) -> out_(0, y, z)
-            # 初始化（注意不能是0，比如算累乘的话初值应该是1，所以直接初始化成第一个元素、后边从第二个元素开始遍历比较好）
             a_index[reduce_dim] = 0
             a_pos = index_to_position(a_index, a_strides)
             now = a_storage[a_pos]
-            # 依次reduce
             for i in range(1, a_shape[reduce_dim]):  
-                a_index[reduce_dim] = i  # 改index，考察a_(i, y, z)
-                a_pos = index_to_position(a_index, a_strides)  # 转化为对应pos
-                now = fn(now, a_storage[a_pos])
-            # 写入out
+                a_index[reduce_dim] = i 
+                a_pos = index_to_position(a_index, a_strides)  # 用@njit编译且逻辑简单，Numba会接受并inline，不违反优化3
+                now = fn(now, a_storage[a_pos])  # 传参进来的且inline，不违反优化3
             out_pos = index_to_position(out_index, out_strides)
             out[out_pos] = now
 
@@ -338,7 +333,7 @@ def _tensor_matrix_multiply(
 
     * Outer loop in parallel
     * No index buffers or function calls
-    * Inner loop should have no global writes, 1 multiply.
+    * Inner loop should have no global writes, 1 multiply.  内层循环：不要写入输出张量out(昂贵 & 多线程竞争) / 每次只做一次乘法
 
 
     Args:
@@ -362,7 +357,27 @@ def _tensor_matrix_multiply(
     b_batch_stride = b_strides[0] if b_shape[0] > 1 else 0
 
     # TODO: Implement for Task 3.2.
-    raise NotImplementedError("Need to implement for Task 3.2")
+    for ordinal in prange(np.prod(out_shape)):  # 优化1
+            out_index = np.zeros(len(out_shape), dtype=np.int32)  
+            a_index = np.zeros(len(a_shape), dtype=np.int32)  
+            b_index = np.zeros(len(b_shape), dtype=np.int32)
+
+            to_index(ordinal, out_shape, out_index)  
+            broadcast_index(out_index, out_shape, a_shape, a_index)  
+            broadcast_index(out_index, out_shape, b_shape, b_index)
+
+            tmp = 0  # 优化3
+            for k in range(a_shape[-1]):
+                a_index[-1] = k
+                b_index[-2] = k
+                a_pos = index_to_position(a_index, a_strides)
+                b_pos = index_to_position(b_index, b_strides)
+                tmp += a_storage[a_pos] * b_storage[b_pos]  # 优化3
+                
+            out_pos = index_to_position(out_index, out_strides)
+            out[out_pos] = tmp
+
+    # raise NotImplementedError("Need to implement for Task 3.2")
 
 
 tensor_matrix_multiply = njit(_tensor_matrix_multiply, parallel=True)
