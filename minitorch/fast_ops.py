@@ -357,25 +357,23 @@ def _tensor_matrix_multiply(
     b_batch_stride = b_strides[0] if b_shape[0] > 1 else 0
 
     # TODO: Implement for Task 3.2.
-    for ordinal in prange(np.prod(out_shape)):  # 优化1
-            out_index = np.zeros(len(out_shape), dtype=np.int32)  
-            a_index = np.zeros(len(a_shape), dtype=np.int32)  
-            b_index = np.zeros(len(b_shape), dtype=np.int32)
+    batch_size = a_shape[0]
+    m = a_shape[1]  
+    n = a_shape[-1]  # a: batchsize × ... × m × n (前面的维度可以任意broadcast)
+    k = b_shape[-1]  # b: batchsize × ... × n × k (前面的维度可以任意broadcast)
 
-            to_index(ordinal, out_shape, out_index)  
-            broadcast_index(out_index, out_shape, a_shape, a_index)  
-            broadcast_index(out_index, out_shape, b_shape, b_index)
+    for b in prange(batch_size):  # 优化1
+        for i in range(m):  # 遍历a的行
+            for j in range(k):  # 遍历b的列
+                tmp = 0.0  # 优化3
+                for l in range(n):  # out[b][i][j] = sigma(a[b][i][l] * b[b][l][j])
+                    # 优化2
+                    a_pos = b * a_batch_stride + i * a_strides[1] + l * a_strides[2]  # 展开index_to_position: sigma(index[i] * strides[i])
+                    b_pos = b * b_batch_stride + l * b_strides[1] + j * b_strides[2]
+                    tmp += a_storage[a_pos] * b_storage[b_pos]  # 优化3
 
-            tmp = 0  # 优化3
-            for k in range(a_shape[-1]):
-                a_index[-1] = k
-                b_index[-2] = k
-                a_pos = index_to_position(a_index, a_strides)
-                b_pos = index_to_position(b_index, b_strides)
-                tmp += a_storage[a_pos] * b_storage[b_pos]  # 优化3
-                
-            out_pos = index_to_position(out_index, out_strides)
-            out[out_pos] = tmp
+                out_pos = b * out_strides[0] + i * out_strides[1] + j * out_strides[2]
+                out[out_pos] = tmp
 
     # raise NotImplementedError("Need to implement for Task 3.2")
 
