@@ -187,3 +187,6 @@ a typical example: Matrix Multiplication
   each block has exactly the same size and shape, and all have their own shared memory
 
   <img width="400" height="300" alt="image" src="https://github.com/user-attachments/assets/35d78ee1-0dac-45d0-80be-ffe1ea86009c" />
+
+  x = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+  y = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
