@@ -310,7 +310,7 @@ def tensor_reduce(
     return njit(_reduce, parallel=True)  # type: ignore
 
 
-def _tensor_matrix_multiply(
+def _tensor_matrix_multiply(  # 被高层MatMul(in tensor_functions.py)调用
     out: Storage,
     out_shape: Shape,
     out_strides: Strides,

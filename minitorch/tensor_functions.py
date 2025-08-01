@@ -289,12 +289,12 @@ class Copy(Function):
 
 class MatMul(Function):
     @staticmethod
-    def forward(ctx: Context, t1: Tensor, t2: Tensor) -> Tensor:
+    def forward(ctx: Context, t1: Tensor, t2: Tensor) -> Tensor:  # f(M, N) = M matmul N
         ctx.save_for_backward(t1, t2)
         return t1.f.matrix_multiply(t1, t2)
 
     @staticmethod
-    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:  # df/dM = grad_output matmul N^T, df/dN = M^T matmul grad_output
         t1, t2 = ctx.saved_values
 
         def transpose(a: Tensor) -> Tensor:
